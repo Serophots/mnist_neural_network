@@ -1,10 +1,9 @@
-//Network #1 (specific)
+//Network 2
 
-//Specific in that the network structure is non-variable
-//Per image in that computations occur once for each image, then iterate over images
-//(rather than a more generalised multiple images at a time via higher matrix dimensions)
-
-//Optimised in reduced memory allocation
+//Improvements:
+// - Weight initialisation is standard normal divided sqrt of the number of inputting weights
+// - R2 Regularisation
+// - Cross entropy cost function
 
 use ndarray::Array2;
 use ndarray_rand::rand_distr::StandardNormal;
@@ -12,75 +11,88 @@ use ndarray_rand::RandomExt;
 use rand::prelude::SliceRandom;
 use rand::thread_rng;
 use crate::mnist::MnistImage;
-use crate::utils::{sigmoid_vector, sigmoid_prime_vector};
+use crate::utils::{sigmoid_prime_vector, sigmoid_vector};
 
-pub struct SpecificPerImage { //784, 30, 10
-    bias_vectors: [Array2<f64>; 3],
-    weight_matrices: [Array2<f64>; 3],
+pub struct Network2 {
+    bias_vectors: Vec<Array2<f64>>,
+    weight_matrices: Vec<Array2<f64>>,
 
-    activation_vectors: [Array2<f64>; 3], //For any feedforward happening
-    weighted_input_vectors: [Array2<f64>; 3],
+    activation_vectors: Vec<Array2<f64>>,
+    weighted_input_vectors: Vec<Array2<f64>>,
 
     //Every batch we train on accumulates and then averages these nabla, before ultimately mutating them in
-    batch_nb: [Array2<f64>; 3],
-    batch_nw: [Array2<f64>; 3],
+    batch_nb: Vec<Array2<f64>>,
+    batch_nw: Vec<Array2<f64>>,
 
     //Every image we train on stores the delta_nabla which is then later summed into batch_nabla
-    image_d_nb: [Array2<f64>; 3],
-    image_d_nw: [Array2<f64>; 3]
+    image_d_nb: Vec<Array2<f64>>,
+    image_d_nw: Vec<Array2<f64>>
 }
 
-impl SpecificPerImage {
-    pub fn new() -> Box<Self> {
+impl Network2 {
+    pub fn new(structure: &[usize]) -> Box<Self> {
+        let mut bias_vectors = Vec::with_capacity(structure.len());
+        let mut weight_matrices = Vec::with_capacity(structure.len());
+
+        let mut activation_vectors = Vec::with_capacity(structure.len());
+        let mut weighted_input_vectors = Vec::with_capacity(structure.len());
+
+        let mut batch_nb = Vec::with_capacity(structure.len());
+        let mut batch_nw = Vec::with_capacity(structure.len());
+
+        let mut image_d_nb = Vec::with_capacity(structure.len());
+        let mut image_d_nw = Vec::with_capacity(structure.len());
+
+        //First layer, special case
+        let mut last_num_neurons = structure[0];
+
+        bias_vectors.push(Array2::zeros((0,0)));
+        weight_matrices.push(Array2::zeros((0,0)));
+
+        batch_nb.push(Array2::zeros((0,0)));
+        batch_nw.push(Array2::zeros((0,0)));
+
+        image_d_nb.push(Array2::zeros((0,0)));
+        image_d_nw.push(Array2::zeros((0,0)));
+
+        activation_vectors.push(Array2::zeros((last_num_neurons, 1)));
+        weighted_input_vectors.push(Array2::zeros((0,0)));
+
+        for &num_neurons in &structure[1..] {
+
+            bias_vectors.push(Array2::random((num_neurons, 1), StandardNormal));
+            weight_matrices.push(Array2::random((num_neurons, last_num_neurons), StandardNormal).mapv(|v: f64| v / (last_num_neurons as f64).sqrt()));
+
+            batch_nb.push(Array2::zeros((num_neurons, 1)));
+            batch_nw.push(Array2::zeros((num_neurons, last_num_neurons)));
+
+            image_d_nb.push(Array2::zeros((num_neurons, 1)));
+            image_d_nw.push(Array2::zeros((num_neurons, last_num_neurons)));
+
+            activation_vectors.push(Array2::zeros((num_neurons, 1)));
+            weighted_input_vectors.push(Array2::zeros((num_neurons, 1)));
+
+            last_num_neurons = num_neurons;
+        }
+
         Box::new(Self {
-            bias_vectors: [
-                Array2::zeros((0,0)),
-                Array2::random((30,1), StandardNormal),
-                Array2::random((10,1), StandardNormal),
-            ],
-            weight_matrices: [
-                Array2::zeros((0, 0)),
-                Array2::random((30, 784), StandardNormal),
-                Array2::random((10, 30), StandardNormal),
-            ],
+            bias_vectors,
+            weight_matrices,
 
-            activation_vectors: [
-                Array2::zeros((784, 1)),
-                Array2::zeros((30, 1)),
-                Array2::zeros((10, 1))
-            ],
-            weighted_input_vectors: [
-                Array2::zeros((0,0)),
-                Array2::zeros((30, 1)),
-                Array2::zeros((10, 1))
-            ],
+            activation_vectors,
+            weighted_input_vectors,
 
-            batch_nb: [
-                Array2::zeros((0,0)),
-                Array2::zeros((30, 1)),
-                Array2::zeros((10, 1))
-            ],
-            batch_nw: [
-                Array2::zeros((0,0)),
-                Array2::zeros((30, 784)),
-                Array2::zeros((10, 30)),
-            ],
+            batch_nb,
+            batch_nw,
 
-            image_d_nb: [
-                Array2::zeros((0,0)),
-                Array2::zeros((30, 1)),
-                Array2::zeros((10, 1))
-            ],
-            image_d_nw: [
-                Array2::zeros((0,0)),
-                Array2::zeros((30, 784)),
-                Array2::zeros((10, 30)),
-            ]
+            image_d_nb,
+            image_d_nw
         })
     }
 
-    pub fn train(&mut self, training_data: &mut Vec<MnistImage>, testing_data: &[MnistImage], epochs: usize, batch_size: usize, eta: f64) {
+    pub fn train(&mut self, training_data: &mut Vec<MnistImage>, testing_data: &[MnistImage], epochs: usize, batch_size: usize, learning_rate: f64, lambda: f64) {
         let mut rng = thread_rng();
+        let n = training_data.len();
 
         println!("Performance from random: {}%", self.evaluate(testing_data));
 
@@ -88,7 +100,7 @@ impl SpecificPerImage {
             training_data.shuffle(&mut rng);
 
             for batch in training_data.chunks(batch_size) {
-                self.train_batch(batch, eta);
+                self.train_batch(batch, learning_rate, lambda, n);
             }
 
             println!("Epoch {}: {}%", epoch, self.evaluate(testing_data));
@@ -96,7 +108,7 @@ impl SpecificPerImage {
 
     }
 
-    fn train_batch(&mut self, batch: &[MnistImage], eta: f64) {
+    fn train_batch(&mut self, batch: &[MnistImage], learning_rate: f64, lambda: f64, n: usize) {
         //Reset the batch_nabla allocations
         for a in self.batch_nb.iter_mut() { a.fill(0.0) }
         for a in self.batch_nw.iter_mut() { a.fill(0.0) }
@@ -113,13 +125,15 @@ impl SpecificPerImage {
             }
         }
 
-        let learning_rate = eta / batch.len() as f64;
+        let learning_scalar = learning_rate / batch.len() as f64;
+        let weight_decay = 1.0 - (learning_rate * lambda) / (n as f64);
 
         for (b, nb) in self.bias_vectors.iter_mut().zip(&self.batch_nb) {
-            *b -= &nb.mapv(|v| v * learning_rate);
+            *b -= &nb.mapv(|v| v * learning_scalar); //TODO: Compare performance with mapv_inplace
         }
         for (w, nw) in self.weight_matrices.iter_mut().zip(&self.batch_nw) {
-            *w -= &nw.mapv(|v| v * learning_rate);
+            *w *= weight_decay;
+            *w -= &nw.mapv(|v| v * learning_scalar);
         }
     }
 
@@ -134,11 +148,11 @@ impl SpecificPerImage {
         //Begin backpropagating in final layer
         {
             let layer_index = 2; //3-1
-            let weighted_inputs = &self.weighted_input_vectors[layer_index];
+            // let weighted_inputs = &self.weighted_input_vectors[layer_index];
             let activations = &self.activation_vectors[layer_index];
             let previous_activations = &self.activation_vectors[layer_index - 1];
 
-            self.image_d_nb[layer_index] = (activations - &image.label_array) * sigmoid_prime_vector(weighted_inputs); //Final layer delta equation: in terms of inputted_weights and activations for the same layer
+            self.image_d_nb[layer_index] = cost_delta(activations, &image.label_array);
             self.image_d_nw[layer_index] = self.image_d_nb[layer_index].dot(&previous_activations.t()); //Nabla layer weights equation: in terms of previous layer activation and current layer delta/error. The equation on the site is never given in matrix form, but fairly logically comes down to this, including the required transposition
         }
 
@@ -196,4 +210,10 @@ impl SpecificPerImage {
 
         (correct_counter as f64 / testing_data.len() as f64) * 100.0
     }
+}
+
+//Cross entropy cost
+#[inline]
+fn cost_delta(activation_vector: &Array2<f64>, target_vector: &Array2<f64>) -> Array2<f64> {
+    activation_vector-target_vector
 }

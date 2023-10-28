@@ -6,6 +6,9 @@
 
 //Optimised in reduced memory allocation
 
+//Quadratic cost, standard normal weight init, no regularization
+
+
 use ndarray::Array2;
 use ndarray_rand::rand_distr::StandardNormal;
 use ndarray_rand::RandomExt;
@@ -14,7 +17,7 @@ use rand::thread_rng;
 use crate::mnist::MnistImage;
 use crate::utils::{sigmoid_prime_vector, sigmoid_vector};
 
-pub struct UnspecificPerImage {
+pub struct Network1 {
     bias_vectors: Vec<Array2<f64>>,
     weight_matrices: Vec<Array2<f64>>,
 
@@ -30,7 +33,7 @@ pub struct UnspecificPerImage {
     image_d_nw: Vec<Array2<f64>>
 }
 
-impl UnspecificPerImage {
+impl Network1 {
     pub fn new(structure: &[usize]) -> Box<Self> {
         let mut bias_vectors = Vec::with_capacity(structure.len());
         let mut weight_matrices = Vec::with_capacity(structure.len());
@@ -47,8 +50,8 @@ impl UnspecificPerImage {
         //First layer, special case
         let mut last_num_neurons = structure[0];
 
-        bias_vectors.push(Array2::random((0,0), StandardNormal));
-        weight_matrices.push(Array2::random((0,0), StandardNormal));
+        bias_vectors.push(Array2::zeros((0,0)));
+        weight_matrices.push(Array2::zeros((0,0)));
 
         batch_nb.push(Array2::zeros((0,0)));
         batch_nw.push(Array2::zeros((0,0)));
@@ -91,7 +94,7 @@ impl UnspecificPerImage {
         })
     }
 
-    pub fn train(&mut self, training_data: &mut Vec<MnistImage>, testing_data: &[MnistImage], epochs: usize, batch_size: usize, eta: f64) {
+    pub fn train(&mut self, training_data: &mut Vec<MnistImage>, testing_data: &[MnistImage], epochs: usize, batch_size: usize, learning_rate: f64) {
         let mut rng = thread_rng();
 
         println!("Performance from random: {}%", self.evaluate(testing_data));
@@ -100,7 +103,7 @@ impl UnspecificPerImage {
             training_data.shuffle(&mut rng);
 
             for batch in training_data.chunks(batch_size) {
-                self.train_batch(batch, eta);
+                self.train_batch(batch, learning_rate);
             }
 
             println!("Epoch {}: {}%", epoch, self.evaluate(testing_data));
@@ -108,7 +111,7 @@ impl UnspecificPerImage {
 
     }
 
-    fn train_batch(&mut self, batch: &[MnistImage], eta: f64) {
+    fn train_batch(&mut self, batch: &[MnistImage], learning_rate: f64) {
         //Reset the batch_nabla allocations
         for a in self.batch_nb.iter_mut() { a.fill(0.0) }
         for a in self.batch_nw.iter_mut() { a.fill(0.0) }
@@ -125,13 +128,13 @@ impl UnspecificPerImage {
             }
         }
 
-        let learning_rate = eta / batch.len() as f64;
+        let learning_scalar = learning_rate / batch.len() as f64;
 
         for (b, nb) in self.bias_vectors.iter_mut().zip(&self.batch_nb) {
-            *b -= &nb.mapv(|v| v * learning_rate);
+            *b -= &nb.mapv(|v| v * learning_scalar);
         }
         for (w, nw) in self.weight_matrices.iter_mut().zip(&self.batch_nw) {
-            *w -= &nw.mapv(|v| v * learning_rate);
+            *w -= &nw.mapv(|v| v * learning_scalar);
         }
     }
 
@@ -150,7 +153,7 @@ impl UnspecificPerImage {
             let activations = &self.activation_vectors[layer_index];
             let previous_activations = &self.activation_vectors[layer_index - 1];
 
-            self.image_d_nb[layer_index] = (activations - &image.label_array) * sigmoid_prime_vector(weighted_inputs); //Final layer delta equation: in terms of inputted_weights and activations for the same layer
+            self.image_d_nb[layer_index] = cost_delta(activations, &image.label_array, weighted_inputs);
             self.image_d_nw[layer_index] = self.image_d_nb[layer_index].dot(&previous_activations.t()); //Nabla layer weights equation: in terms of previous layer activation and current layer delta/error. The equation on the site is never given in matrix form, but fairly logically comes down to this, including the required transposition
         }
 
@@ -210,3 +213,13 @@ impl UnspecificPerImage {
     }
 }
 
+
+//Quadratic cost
+#[inline]
+fn cost_delta(
+    activation_vector: &Array2<f64>,
+    target_vector: &Array2<f64>,
+    weighted_inputs: &Array2<f64>
+) -> Array2<f64> {
+    (activation_vector - target_vector) * sigmoid_prime_vector(weighted_inputs)
+}

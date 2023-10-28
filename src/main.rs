@@ -9,14 +9,15 @@ struct Args {
     implementation: Option<Implementation>,
     epochs: Option<usize>,
     batch_size: Option<usize>,
-    eta: Option<f64>,
+    learning_rate: Option<f64>,
+    lambda: Option<f64>,
 }
 
 
 #[derive(ValueEnum, Clone)]
 enum Implementation {
-    SpecificPerImage,
-    UnspecificPerImage,
+    Network1,
+    Network2,
 }
 
 fn main() {
@@ -27,25 +28,25 @@ fn main() {
 
     println!("Loaded mnist data");
 
+    let epochs = args.epochs.unwrap_or(30);
 
-    match args.implementation.unwrap_or(Implementation::UnspecificPerImage) {
-        Implementation::SpecificPerImage => {
-            let mut network = networks::specific_per_image::SpecificPerImage::new();
+    match args.implementation.unwrap_or(Implementation::Network2) {
+        Implementation::Network1 => {
+            let mut network = networks::network1::Network1::new(&[784, 30, 10]);
 
-            let epochs = args.epochs.unwrap_or(30);
             let batch_size = args.batch_size.unwrap_or(10);
-            let eta = args.eta.unwrap_or(3.0);
+            let learning_rate = args.learning_rate.unwrap_or(3.0);
 
-            network.train(&mut training_data, testing_data.as_slice(), epochs, batch_size, eta)
+            network.train(&mut training_data, testing_data.as_slice(), epochs, batch_size, learning_rate);
         },
-        Implementation::UnspecificPerImage => {
-            let mut network = networks::unspecific_per_image::UnspecificPerImage::new(&[784, 30, 10]);
+        Implementation::Network2 => {
+            let mut network = networks::network2::Network2::new(&[784, 30, 10]);
 
-            let epochs = args.epochs.unwrap_or(30);
             let batch_size = args.batch_size.unwrap_or(10);
-            let eta = args.eta.unwrap_or(3.0);
+            let learning_rate = args.learning_rate.unwrap_or(0.1);
+            let lambda = args.lambda.unwrap_or(5.0);
 
-            network.train(&mut training_data, testing_data.as_slice(), epochs, batch_size, eta);
+            network.train(&mut training_data, testing_data.as_slice(), epochs, batch_size, learning_rate, lambda);
         }
     };
 
