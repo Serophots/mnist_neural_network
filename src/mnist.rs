@@ -50,7 +50,7 @@ pub struct MnistImage {
     pub label: u8,
 }
 
-pub fn load_mnist_file(image_file_name: &str, label_file_name: &str) -> Result<Box<Vec<MnistImage>>, std::io::Error> {
+pub fn load_mnist_file(image_file_name: &str, label_file_name: &str) -> Result<Vec<MnistImage>, std::io::Error> {
     let image_data = MnistData::new(&(File::open(image_file_name)?))?;
     let label_data = MnistData::new(&(File::open(label_file_name)?))?;
 
@@ -62,18 +62,18 @@ pub fn load_mnist_file(image_file_name: &str, label_file_name: &str) -> Result<B
 
     assert_eq!(num_images, num_labels);
 
-    let mut images: Box<Vec<MnistImage>> = Box::new(Vec::with_capacity(num_images as usize));
+    let mut images: Vec<MnistImage> = Vec::with_capacity(num_images as usize);
 
     for i in 0..num_images as usize {
         let start_offset = i * image_size;
         let end_offset = (i+1) * image_size;
-        let image_data: Vec<f64> = image_data.data[start_offset..end_offset].iter().map(|&x|  x as f64 / 255.).collect();
+        let image_data = image_data.data[start_offset..end_offset].iter().map(|&x|  x as f64 / 255.);
 
         let mut label = Array2::zeros((10,1));
         label[(label_data.data[i] as usize, 0)] = 1.0;
 
 
-        let a: Array1<f64> = Array1::from_vec(image_data);
+        let a: Array1<f64> = Array1::from_iter(image_data);
         let b: Array2<f64> = a.into_shape((784,1)).unwrap();
 
         images.push(MnistImage {
