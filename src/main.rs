@@ -2,6 +2,8 @@ mod utils;
 mod mnist;
 mod networks;
 
+extern crate blas_src;
+
 use clap::{Parser, ValueEnum};
 
 #[derive(Parser)]
@@ -14,7 +16,7 @@ struct Args {
 }
 
 
-#[derive(ValueEnum, Clone)]
+#[derive(ValueEnum, Clone, Debug)]
 enum Implementation {
     Network1,
     Network2,
@@ -26,11 +28,13 @@ fn main() {
     let mut training_data = mnist::load_mnist_file("train-images-idx3-ubyte.gz", "train-labels-idx1-ubyte.gz").unwrap();
     let testing_data = mnist::load_mnist_file("t10k-images-idx3-ubyte.gz", "t10k-labels-idx1-ubyte.gz").unwrap();
 
-    println!("Loaded mnist data");
-
+    let implementation = args.implementation.unwrap_or(Implementation::Network2);
     let epochs = args.epochs.unwrap_or(30);
 
-    match args.implementation.unwrap_or(Implementation::Network2) {
+    println!("Loaded mnist data");
+    println!("Training {:?}", implementation);
+
+    match implementation {
         Implementation::Network1 => {
             let mut network = networks::network1::Network1::new(&[784, 30, 10]);
 
@@ -47,7 +51,7 @@ fn main() {
             let lambda = args.lambda.unwrap_or(5.0);
 
             network.train(&mut training_data, testing_data.as_slice(), epochs, batch_size, learning_rate, lambda);
-        }
+        },
     };
 
 }

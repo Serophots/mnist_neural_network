@@ -5,7 +5,7 @@
 // - R2 Regularisation
 // - Cross entropy cost function
 
-use ndarray::Array2;
+use ndarray::{Array2, Zip};
 use ndarray_rand::rand_distr::StandardNormal;
 use ndarray_rand::RandomExt;
 use rand::prelude::SliceRandom;
@@ -169,9 +169,9 @@ impl Network2 {
     }
 
     fn feed_forward(&mut self, input_array: &Array2<f64>) {
-        for (a,&b) in self.activation_vectors[0].iter_mut().zip(input_array) {
+        Zip::from(&mut self.activation_vectors[0]).and(input_array).for_each(|a,&b| {
             *a = b;
-        }
+        });
 
         for layer_index in 1..3 {
             let b = &self.bias_vectors[layer_index];
