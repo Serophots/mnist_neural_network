@@ -15,7 +15,7 @@ use ndarray_rand::RandomExt;
 use rand::prelude::SliceRandom;
 use rand::thread_rng;
 use crate::mnist::MnistImage;
-use crate::utils::{sigmoid_prime_vector, sigmoid_vector};
+use crate::utils::{sigmoid_prime_array, sigmoid_array};
 
 pub struct Network1 {
     bias_vectors: Vec<Array2<f64>>,
@@ -164,7 +164,7 @@ impl Network1 {
             let current_weighted_inputs = &self.weighted_input_vectors[layer_index];
             let previous_activations = &self.activation_vectors[layer_index - 1];
 
-            self.image_d_nb[layer_index] = next_weights.t().dot(next_delta) * sigmoid_prime_vector(current_weighted_inputs); //Delta equation in terms of 'previous' delta: in terms of next weights, next delta, current weighted inputs
+            self.image_d_nb[layer_index] = next_weights.t().dot(next_delta) * sigmoid_prime_array(current_weighted_inputs); //Delta equation in terms of 'previous' delta: in terms of next weights, next delta, current weighted inputs
             self.image_d_nw[layer_index] = self.image_d_nb[layer_index].dot(&previous_activations.t()); //Nabla layer weights equation: in terms of previous layer activation and current layer delta/error. The equation on the site is never given in matrix form, but fairly logically comes down to this, including the required transposition
         }
     }
@@ -181,7 +181,7 @@ impl Network1 {
             let input_activations = &self.activation_vectors[layer_index - 1];
 
             self.weighted_input_vectors[layer_index] = w.dot(input_activations) + b;
-            self.activation_vectors[layer_index] = sigmoid_vector(&self.weighted_input_vectors[layer_index]);
+            self.activation_vectors[layer_index] = sigmoid_array(&self.weighted_input_vectors[layer_index]);
         }
 
     }
@@ -221,5 +221,5 @@ fn cost_delta(
     target_vector: &Array2<f64>,
     weighted_inputs: &Array2<f64>
 ) -> Array2<f64> {
-    (activation_vector - target_vector) * sigmoid_prime_vector(weighted_inputs)
+    (activation_vector - target_vector) * sigmoid_prime_array(weighted_inputs)
 }
